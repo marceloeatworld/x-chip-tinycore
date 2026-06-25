@@ -155,6 +155,20 @@ require_loginable_shadow() {
     esac
 }
 
+reject_locked_shadow() {
+    local password_field
+    password_field=$(extract_entry etc/shadow | awk -F: -v user="$SSH_USER" '$1 == user { print $2; found = 1 } END { exit found ? 0 : 1 }') || {
+        echo "ERROR: /etc/shadow has no $SSH_USER entry" >&2
+        exit 1
+    }
+    case "$password_field" in
+        "!"|"*")
+            echo "ERROR: /etc/shadow password for $SSH_USER is locked; key-only SSH needs an unlocked account" >&2
+            exit 1
+            ;;
+    esac
+}
+
 require_order() {
     local path=$1 first=$2 second=$3 first_line second_line
     require_entry "$path"
@@ -278,6 +292,8 @@ if [ "${REQUIRE_AUTHORIZED_KEYS:-1}" = 1 ]; then
 fi
 if [ "$SSH_PASSWORD_AUTH" = 1 ]; then
     require_loginable_shadow
+else
+    reject_locked_shadow
 fi
 if [ "${REQUIRE_WIFI_CONFIG:-1}" = 1 ]; then
     require_nonempty etc/wpa_supplicant.conf

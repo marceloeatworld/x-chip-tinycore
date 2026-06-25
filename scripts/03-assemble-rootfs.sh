@@ -110,7 +110,7 @@ install_text() {
 
 ssh_shadow_password() {
     if [ "$SSH_PASSWORD_AUTH" != 1 ]; then
-        printf '!'
+        printf ''
         return 0
     fi
     if [ -n "${SSH_PASSWORD_HASH:-}" ]; then
