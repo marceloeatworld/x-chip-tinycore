@@ -63,7 +63,7 @@ mkdir -p "$release_dir"
 
 rootfs_out="$release_dir/$RELEASE_NAME.rootfs.tar.gz"
 cp "$ROOTFS" "$rootfs_out"
-sha256sum "$rootfs_out" >"$rootfs_out.sha256"
+(cd "$release_dir" && sha256sum "$(basename "$rootfs_out")" >"$(basename "$rootfs_out").sha256")
 
 git_rev=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 generated_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
