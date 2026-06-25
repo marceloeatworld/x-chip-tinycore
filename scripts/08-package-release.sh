@@ -33,6 +33,8 @@ has_wifi=0
 if entry_exists etc/wpa_supplicant.conf; then
     has_wifi=1
 fi
+ssh_password_auth=$(extract_entry usr/local/etc/ssh/sshd_config | awk 'tolower($1) == "passwordauthentication" { print tolower($2) }' | tail -n 1)
+[ -n "$ssh_password_auth" ] || ssh_password_auth=unknown
 
 if { [ "$auth_bytes" -gt 0 ] || [ "$has_wifi" = 1 ]; } && [ "${ALLOW_PERSONAL_RELEASE:-0}" != 1 ]; then
     cat >&2 <<EOF
@@ -83,6 +85,8 @@ rootfs_file=$(basename "$rootfs_out")
 rootfs_sha256=$rootfs_sha
 contains_wifi_config=$has_wifi
 authorized_keys_bytes=$auth_bytes
+ssh_user=$SSH_USER
+ssh_password_auth=$ssh_password_auth
 EOF
 
 cat >"$release_dir/README-release.txt" <<EOF
@@ -107,7 +111,11 @@ Flash through another Linux host:
 After flashing, remove the FEL jumper and reboot.
 
 Public images contain no WiFi PSK and no SSH authorized key.
-For automatic WiFi/SSH, build a personal image from source with secrets.env.
+SSH password login is enabled for user "$SSH_USER".
+Default public password: chip
+Change it after first login with: passwd
+
+For automatic WiFi or key-only SSH, build a personal image from source with secrets.env.
 EOF
 
 echo ">> release package: $release_dir"

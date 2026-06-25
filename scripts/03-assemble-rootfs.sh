@@ -13,6 +13,18 @@ if [ -f "$SECRETS_ENV" ]; then
     source "$SECRETS_ENV"
 fi
 
+if [ -z "${SSH_PASSWORD_AUTH:-}" ]; then
+    if [ "${REQUIRE_AUTHORIZED_KEYS:-1}" = 0 ]; then
+        SSH_PASSWORD_AUTH=1
+    else
+        SSH_PASSWORD_AUTH=0
+    fi
+fi
+case "$SSH_PASSWORD_AUTH" in
+    0|1) ;;
+    *) echo "ERROR: SSH_PASSWORD_AUTH must be 0 or 1" >&2; exit 1 ;;
+esac
+
 if [ -z "${FAKEROOTKEY:-}" ]; then
     if [ "${ROOTFS_FORCE_FAKEROOT:-0}" = 1 ]; then
         if command -v fakeroot >/dev/null 2>&1; then
@@ -94,6 +106,29 @@ install_text() {
     cat >"$tmp"
     need_root install -m "$mode" "$tmp" "$dest"
     rm -f "$tmp"
+}
+
+ssh_shadow_password() {
+    if [ "$SSH_PASSWORD_AUTH" != 1 ]; then
+        printf '!'
+        return 0
+    fi
+    if [ -n "${SSH_PASSWORD_HASH:-}" ]; then
+        case "$SSH_PASSWORD_HASH" in
+            *:*) echo "ERROR: SSH_PASSWORD_HASH must not contain ':'" >&2; exit 1 ;;
+        esac
+        printf '%s' "$SSH_PASSWORD_HASH"
+        return 0
+    fi
+    if [ -z "${SSH_PASSWORD:-}" ]; then
+        echo "ERROR: SSH_PASSWORD must be non-empty when SSH_PASSWORD_AUTH=1" >&2
+        exit 1
+    fi
+    if ! command -v openssl >/dev/null 2>&1; then
+        echo "ERROR: openssl is required to hash SSH_PASSWORD" >&2
+        exit 1
+    fi
+    printf '%s\n' "$SSH_PASSWORD" | openssl passwd -6 -salt "${SSH_PASSWORD_SALT:-xchiptinycore}" -stdin
 }
 
 create_static_dev_nodes() {
@@ -260,6 +295,7 @@ EOF
 }
 
 install_runtime_identity() {
+    local shadow_password
     need_root install -d "$RFS/etc" "$RFS/etc/sysconfig" "$RFS/home" "$RFS/opt"
     [ -f "$RFS/etc/passwd" ] || echo 'root:x:0:0:root:/root:/bin/sh' | need_root tee "$RFS/etc/passwd" >/dev/null
     [ -f "$RFS/etc/group" ] || echo 'root:x:0:' | need_root tee "$RFS/etc/group" >/dev/null
@@ -287,8 +323,9 @@ install_runtime_identity() {
     done
     replace_colon_record "$RFS/etc/passwd" 0644 "$SSH_USER" \
         "$SSH_USER:x:$SSH_UID:$SSH_GID:CHIP User:/home/$SSH_USER:/bin/sh"
+    shadow_password=$(ssh_shadow_password)
     replace_colon_record "$RFS/etc/shadow" 0600 "$SSH_USER" \
-        "$SSH_USER::19000:0:99999:7:::"
+        "$SSH_USER:$shadow_password:19000:0:99999:7:::"
 
     echo "$CHIP_HOSTNAME" | need_root tee "$RFS/etc/hostname" >/dev/null
     echo "$SSH_USER" | need_root tee "$RFS/etc/sysconfig/tcuser" >/dev/null
@@ -1197,6 +1234,9 @@ EOF
     fi
 
     need_root install -d "$RFS/usr/local/etc/ssh"
+    local password_auth
+    password_auth=no
+    [ "$SSH_PASSWORD_AUTH" = 1 ] && password_auth=yes
     install_text 0644 "$RFS/usr/local/etc/ssh/sshd_config" <<EOF
 Port 22
 Protocol 2
@@ -1204,10 +1244,9 @@ HostKey /usr/local/etc/ssh/ssh_host_ed25519_key
 HostKey /usr/local/etc/ssh/ssh_host_rsa_key
 PubkeyAuthentication yes
 AuthorizedKeysFile .ssh/authorized_keys
-PasswordAuthentication no
+PasswordAuthentication $password_auth
 PermitEmptyPasswords no
 PermitRootLogin prohibit-password
-UsePAM no
 UseDNS no
 Subsystem sftp internal-sftp
 EOF

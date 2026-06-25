@@ -66,7 +66,12 @@ Public release must show:
 ```text
 contains_wifi_config=0
 authorized_keys_bytes=0
+ssh_user=chip
+ssh_password_auth=yes
 ```
+
+The public SSH login is `chip` / `chip` by default. Override the password for a
+custom public build with `SSH_PASSWORD=... make public-rootfs`.
 
 ## Private Override
 

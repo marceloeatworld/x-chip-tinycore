@@ -90,6 +90,9 @@ make public-release
 ```
 
 The public image contains no WiFi PSK and no SSH authorized key.
+SSH is enabled with password login for user `chip`; the default public password
+is `chip`. Change it after first login with `passwd`, or override it at build
+time with `SSH_PASSWORD=... make public-rootfs`.
 
 ## Important Files
 

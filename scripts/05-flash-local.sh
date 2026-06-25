@@ -197,6 +197,10 @@ grep -q 'load_tcz_boot_core' /verify-rootfs/opt/x-chip-firstboot.sh
 grep -q 'load_tcz_onboot_background' /verify-rootfs/opt/x-chip-firstboot.sh
 grep -q 'start_ssh' /verify-rootfs/opt/x-chip-firstboot.sh
 grep -q 'UseDNS no' /verify-rootfs/usr/local/etc/ssh/sshd_config
+if grep -q 'UsePAM' /verify-rootfs/usr/local/etc/ssh/sshd_config; then
+  echo "ERROR: sshd_config contains unsupported UsePAM option" >&2
+  exit 1
+fi
 test -s /verify-rootfs/usr/share/kmap/pocketchip.kmap
 test "$(od -An -tx1 -j264 -N16 /verify-rootfs/usr/share/kmap/pocketchip.kmap | tr -d ' \n')" = "021b0031003200330034003500360037"
 test "$(od -An -tx1 -j816 -N10 /verify-rootfs/usr/share/kmap/pocketchip.kmap | tr -d ' \n')" = "0b7b007d005b005d007c"

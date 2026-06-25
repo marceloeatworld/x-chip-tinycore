@@ -9,6 +9,18 @@ if [ -f "$SECRETS_ENV" ]; then
     source "$SECRETS_ENV"
 fi
 
+if [ -z "${SSH_PASSWORD_AUTH:-}" ]; then
+    if [ "${REQUIRE_AUTHORIZED_KEYS:-1}" = 0 ]; then
+        SSH_PASSWORD_AUTH=1
+    else
+        SSH_PASSWORD_AUTH=0
+    fi
+fi
+case "$SSH_PASSWORD_AUTH" in
+    0|1) ;;
+    *) echo "ERROR: SSH_PASSWORD_AUTH must be 0 or 1" >&2; exit 1 ;;
+esac
+
 ROOTFS=${1:-${ROOTFS:-$OUT}}
 
 [ -f "$ROOTFS" ] || {
@@ -118,6 +130,29 @@ require_content() {
         echo "ERROR: /${path#/} does not contain expected marker: $pattern" >&2
         exit 1
     }
+}
+
+reject_content() {
+    local path=$1 pattern=$2
+    require_entry "$path"
+    if extract_entry "$path" | grep -a "$pattern" >/dev/null; then
+        echo "ERROR: /${path#/} contains unsupported marker: $pattern" >&2
+        exit 1
+    fi
+}
+
+require_loginable_shadow() {
+    local password_field
+    password_field=$(extract_entry etc/shadow | awk -F: -v user="$SSH_USER" '$1 == user { print $2; found = 1 } END { exit found ? 0 : 1 }') || {
+        echo "ERROR: /etc/shadow has no $SSH_USER entry" >&2
+        exit 1
+    }
+    case "$password_field" in
+        ""|"!"|"*")
+            echo "ERROR: /etc/shadow password for $SSH_USER is locked or empty" >&2
+            exit 1
+            ;;
+    esac
 }
 
 require_order() {
@@ -241,6 +276,9 @@ require_mode_pattern "home/$SSH_USER/.ssh/authorized_keys" '-rw-------'
 if [ "${REQUIRE_AUTHORIZED_KEYS:-1}" = 1 ]; then
     require_nonempty "home/$SSH_USER/.ssh/authorized_keys"
 fi
+if [ "$SSH_PASSWORD_AUTH" = 1 ]; then
+    require_loginable_shadow
+fi
 if [ "${REQUIRE_WIFI_CONFIG:-1}" = 1 ]; then
     require_nonempty etc/wpa_supplicant.conf
 fi
@@ -291,6 +329,13 @@ require_content opt/x-chip-tty1-getty.sh 'getty -n'
 require_content opt/x-chip-tty1-getty.sh 'WAITED'
 require_content opt/x-chip-autologin.sh 'login -f'
 require_content usr/local/etc/ssh/sshd_config 'UseDNS no'
+reject_content usr/local/etc/ssh/sshd_config 'UsePAM'
+if [ "$SSH_PASSWORD_AUTH" = 1 ]; then
+    require_content usr/local/etc/ssh/sshd_config 'PasswordAuthentication yes'
+else
+    require_content usr/local/etc/ssh/sshd_config 'PasswordAuthentication no'
+fi
+require_content usr/local/etc/ssh/sshd_config 'PermitEmptyPasswords no'
 require_content usr/local/etc/ssh/sshd_config 'Subsystem sftp internal-sftp'
 require_content etc/inittab 'ttyS0::respawn'
 require_content etc/inittab 'x-chip-tty1-getty'

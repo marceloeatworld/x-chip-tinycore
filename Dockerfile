@@ -3,7 +3,7 @@
 FROM debian:trixie
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        make gcc git kbd bc bison flex libssl-dev libncurses-dev \
+        make gcc git kbd bc bison flex openssl libssl-dev libncurses-dev \
         crossbuild-essential-armhf u-boot-tools kmod fakeroot \
         cpio gzip xz-utils unzip curl ca-certificates patch cpp mtools fdisk \
         squashfs-tools \
