@@ -887,6 +887,15 @@ ensure_devpts() {
 	fi
 }
 
+reset_tce_installed_markers() {
+	[ -d /usr/local/tce.installed ] || return 0
+	for marker in /usr/local/tce.installed/*; do
+		[ -e "$marker" ] || continue
+		ext="${marker##*/}.tcz"
+		[ -f "/tce/optional/$ext" ] && rm -f "$marker" 2>/dev/null || true
+	done
+}
+
 load_tcz_onboot() {
 	[ -f /tce/onboot.lst ] || return 0
 	command -v tce-load >/dev/null 2>&1 || return 0
@@ -1196,6 +1205,7 @@ start_ssh() {
 
 silence_kernel_console
 ensure_devpts
+reset_tce_installed_markers
 load_pocketchip_input_modules
 load_keymap
 enable_display_console
