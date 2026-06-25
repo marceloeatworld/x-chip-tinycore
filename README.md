@@ -117,6 +117,10 @@ scripts/08-package-release.sh
 - Internal WiFi: RTL8723BS
 - External USB WiFi: RTL8812AU loads only when plugged in
 - PocketCHIP keymap: loaded from `chip-debroot` by default
+- Audio UI controls: `libasound.tcz` + `alsa.tcz` + `alsa-utils.tcz` loaded
+  early for direct ALSA control (`amixer`, `alsamixer`, `aplay`)
+- Optional media pack: `/tce/media.lst` pre-seeds `ffmpeg.tcz`; it is loaded on
+  demand by `x-chip-media-on` for `ffplay` video playback, not at boot
 
 The PocketCHIP keymap is a partial `loadkeys` overlay. The build always merges
 it with the default Linux console map from the kernel tree being built, then

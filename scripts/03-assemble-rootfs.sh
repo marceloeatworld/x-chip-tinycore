@@ -657,6 +657,75 @@ done
 EOF
 }
 
+install_media_tools() {
+    need_root install -d "$RFS/usr/local/bin"
+    need_root install -d "$RFS/home/$SSH_USER/Pictures" "$RFS/home/$SSH_USER/Videos"
+    need_root chown "$SSH_UID:$SSH_GID" "$RFS/home/$SSH_USER/Pictures" "$RFS/home/$SSH_USER/Videos"
+    install_text 0755 "$RFS/usr/local/bin/x-chip-media-on" <<'EOF'
+#!/bin/sh
+set -eu
+
+MEDIA_LIST=/tce/media.lst
+TC_USER="$(cat /etc/sysconfig/tcuser 2>/dev/null || echo chip)"
+
+scrub_kernel_placeholder_deps() {
+	for depfile in /tce/optional/*.tcz.dep; do
+		[ -f "$depfile" ] || continue
+		grep -q KERNEL "$depfile" 2>/dev/null || continue
+		tmp="/tmp/${depfile##*/}.clean"
+		grep -v KERNEL "$depfile" >"$tmp" || true
+		install -m644 "$tmp" "$depfile"
+		rm -f "$tmp"
+	done
+}
+
+load_tcz_one() {
+	ext="$1"
+	case "$ext" in
+		''|\#*) return 0 ;;
+	esac
+	case "$ext" in
+		*.tcz) ;;
+		*) ext="$ext.tcz" ;;
+	esac
+	scrub_kernel_placeholder_deps
+	if [ -f "/tce/optional/$ext" ]; then
+		target="/tce/optional/$ext"
+	else
+		target="$ext"
+	fi
+	if id "$TC_USER" >/dev/null 2>&1; then
+		su "$TC_USER" -c "tce-load -i $target"
+	else
+		tce-load -i "$target"
+	fi
+}
+
+[ -f "$MEDIA_LIST" ] || {
+	echo "missing $MEDIA_LIST" >&2
+	exit 1
+}
+
+command -v tce-load >/dev/null 2>&1 || {
+	echo "missing tce-load" >&2
+	exit 1
+}
+
+while IFS= read -r ext; do
+	ext=${ext%%#*}
+	ext=${ext%%[[:space:]]*}
+	load_tcz_one "$ext"
+done < "$MEDIA_LIST"
+
+command -v ffplay >/dev/null 2>&1 || {
+	echo "ffplay unavailable" >&2
+	exit 1
+}
+
+echo "media ready"
+EOF
+}
+
 install_user_command_symlinks() {
     need_root install -d "$RFS/usr/local/bin"
     for tool in iw iwconfig wpa_cli; do
@@ -820,6 +889,17 @@ preseed_tcz_extensions() {
         rm -f "$tmp"
     }
 
+    scrub_kernel_placeholder_deps() {
+        local depfile=$1 tmp
+        [ -s "$depfile" ] || return 0
+        if grep -q 'KERNEL' "$depfile"; then
+            tmp=$(mktemp)
+            grep -v 'KERNEL' "$depfile" >"$tmp" || true
+            need_root install -m644 "$tmp" "$depfile"
+            rm -f "$tmp"
+        fi
+    }
+
     download_tcz() {
         local pkg=$1 dep
         pkg=${pkg%%#*}
@@ -838,6 +918,7 @@ preseed_tcz_extensions() {
         echo ">> preseed $pkg"
         download_required "$TCZ_REPO/$pkg" "$optional/$pkg"
         download_optional "$TCZ_REPO/$pkg.dep" "$optional/$pkg.dep" || true
+        scrub_kernel_placeholder_deps "$optional/$pkg.dep"
         download_optional "$TCZ_REPO/$pkg.md5.txt" "$optional/$pkg.md5.txt" || true
         download_optional "$TCZ_REPO/$pkg.info" "$optional/$pkg.info" || true
 
@@ -851,6 +932,12 @@ preseed_tcz_extensions() {
     while IFS= read -r ext; do
         download_tcz "$ext"
     done < tce/onboot.lst
+
+    if [ -f tce/media.lst ]; then
+        while IFS= read -r ext; do
+            download_tcz "$ext"
+        done < tce/media.lst
+    fi
 
     need_root chown -R 0:0 "$RFS/tce"
 }
@@ -941,6 +1028,9 @@ load_tcz_boot_core() {
 		bash.tcz \
 		nano.tcz \
 		less.tcz \
+		libasound.tcz \
+		alsa.tcz \
+		alsa-utils.tcz \
 		tmux.tcz \
 		rsync.tcz; do
 		TC_USER="$(cat /etc/sysconfig/tcuser 2>/dev/null || echo "@SSH_USER@")"
@@ -1085,6 +1175,10 @@ load_audio_modules() {
 		amixer set Speaker unmute >/dev/null 2>&1 || true
 		amixer set Speaker 80% >/dev/null 2>&1 || true
 		amixer set PCM 80% >/dev/null 2>&1 || true
+		amixer set 'Power Amplifier Mute' off >/dev/null 2>&1 || true
+		amixer set 'Power Amplifier Mixer' off >/dev/null 2>&1 || true
+		amixer set 'Power Amplifier DAC' on >/dev/null 2>&1 || true
+		amixer set 'Power Amplifier' 80% >/dev/null 2>&1 || true
 	fi
 }
 
@@ -1281,6 +1375,7 @@ EOF
         "usr/local/bin/x-chip-keyboard-status" \
         "usr/local/bin/x-chip-audio-status" \
         "usr/local/bin/x-chip-power-status" \
+        "usr/local/bin/x-chip-media-on" \
         "usr/local/sbin/x-chip-rtl8812au-hotplug" \
         "opt/x-chip-firstboot.sh" \
         "opt/x-chip-autologin.sh" \
@@ -1298,6 +1393,7 @@ EOF
 # 2. tce mirror + onboot extension list (pulled on first online boot).
 need_root install -d "$RFS/tce/optional"
 need_root cp tce/onboot.lst "$RFS/tce/onboot.lst"
+[ -f tce/media.lst ] && need_root cp tce/media.lst "$RFS/tce/media.lst"
 need_root install -d "$RFS/opt"
 echo "$TC_MIRROR" | need_root tee "$RFS/opt/tcemirror" >/dev/null
 
@@ -1312,6 +1408,7 @@ install_board_runtime_config
 install_keymap
 install_keyboard_debug_tools
 install_hardware_debug_tools
+install_media_tools
 install_user_command_symlinks
 install_rtl8812au_hotplug
 install_extra_firmware
@@ -1342,15 +1439,19 @@ for required in \
     ./usr/local/bin/x-chip-keyboard-status \
     ./usr/local/bin/x-chip-audio-status \
     ./usr/local/bin/x-chip-power-status \
+    ./usr/local/bin/x-chip-media-on \
     ./usr/local/sbin/x-chip-rtl8812au-hotplug \
     ./etc/modprobe.d/8812au.conf \
     ./etc/udev/rules.d/90-x-chip-rtl8812au-hotplug.rules \
     ./usr/local/etc/ssh/sshd_config \
     ./home/$SSH_USER/.ssh/authorized_keys \
+    ./home/$SSH_USER/Pictures \
+    ./home/$SSH_USER/Videos \
     ./usr/share/kmap/pocketchip.kmap \
     ./lib/firmware/nextthingco/chip/early/x-chip-pocketchip.dtbo \
     ./lib/firmware/rtlwifi/rtl8723bs_nic.bin \
-    ./tce/onboot.lst; do
+    ./tce/onboot.lst \
+    ./tce/media.lst; do
     tar -tzf "$HERE/$OUT" "$required" >/dev/null 2>&1 || {
         echo "ERROR: packed rootfs is missing $required" >&2
         exit 1

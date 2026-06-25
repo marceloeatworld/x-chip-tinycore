@@ -227,17 +227,21 @@ for required in \
     usr/local/bin/x-chip-keyboard-status \
     usr/local/bin/x-chip-audio-status \
     usr/local/bin/x-chip-power-status \
+    usr/local/bin/x-chip-media-on \
     usr/local/bin/iw \
     usr/local/bin/iwconfig \
     usr/local/bin/wpa_cli \
     usr/local/bin/x-chip-load-rtl8812au \
     usr/local/sbin/x-chip-rtl8812au-hotplug \
     usr/local/etc/ssh/sshd_config \
+    home/$SSH_USER/Pictures \
+    home/$SSH_USER/Videos \
     usr/share/kmap/pocketchip.kmap \
     usr/share/kmap/pocketchip.loadkeys \
     lib/firmware/nextthingco/chip/early/x-chip-pocketchip.dtbo \
     lib/firmware/rtlwifi/rtl8723bs_nic.bin \
-    tce/onboot.lst; do
+    tce/onboot.lst \
+    tce/media.lst; do
     require_entry "$required"
 done
 
@@ -328,6 +332,7 @@ require_content opt/x-chip-firstboot.sh 'load_tcz_onboot_background'
 require_content opt/x-chip-firstboot.sh 'load_keymap'
 require_content opt/x-chip-firstboot.sh 'configure_power_management'
 require_content opt/x-chip-firstboot.sh 'load_audio_modules'
+require_content opt/x-chip-firstboot.sh 'Power Amplifier DAC'
 require_content opt/x-chip-firstboot.sh 'LCD_BRIGHTNESS_VALUE='
 require_content opt/x-chip-firstboot.sh 'LCD brightness set to'
 require_content opt/x-chip-firstboot.sh 'silence_kernel_console'
@@ -347,6 +352,8 @@ require_content etc/modprobe.d/8812au.conf 'options 8812au'
 require_content opt/x-chip-tty1-getty.sh 'getty -n'
 require_content opt/x-chip-tty1-getty.sh 'WAITED'
 require_content opt/x-chip-autologin.sh 'login -f'
+require_content usr/local/bin/x-chip-media-on 'ffplay'
+require_content usr/local/bin/x-chip-media-on 'tce-load'
 require_content usr/local/etc/ssh/sshd_config 'UseDNS no'
 reject_content usr/local/etc/ssh/sshd_config 'UsePAM'
 if [ "$SSH_PASSWORD_AUTH" = 1 ]; then
@@ -359,20 +366,34 @@ require_content usr/local/etc/ssh/sshd_config 'Subsystem sftp internal-sftp'
 require_content etc/inittab 'ttyS0::respawn'
 require_content etc/inittab 'x-chip-tty1-getty'
 require_content tce/onboot.lst 'kmaps.tcz'
+require_content tce/onboot.lst 'libasound.tcz'
+require_content tce/onboot.lst 'alsa.tcz'
+require_content tce/onboot.lst 'alsa-utils.tcz'
+reject_content tce/onboot.lst 'ffmpeg.tcz'
+reject_content tce/onboot.lst 'mpg123.tcz'
+reject_content tce/onboot.lst 'sox.tcz'
+reject_content tce/onboot.lst 'alsa-plugins.tcz'
+require_content tce/media.lst 'ffmpeg.tcz'
+while IFS= read -r depfile; do
+    reject_content "$depfile" 'KERNEL'
+done < <(grep -E '^(\./)?tce/optional/.*\.tcz\.dep$' "$TMP_LIST" | sed 's#^\./##')
 require_pocketchip_keymap_complete
 
 if [ "${PRESEED_TCZ:-1}" = 1 ]; then
-    while IFS= read -r ext; do
-        ext=${ext%%#*}
-        ext=${ext//[$'\t\r\n ']/}
-        [ -n "$ext" ] || continue
-        case "$ext" in
-            *KERNEL*.tcz) continue ;;
-            *.tcz) ;;
-            *) ext="$ext.tcz" ;;
-        esac
-        require_entry "tce/optional/$ext"
-    done < tce/onboot.lst
+    for ext_list in tce/onboot.lst tce/media.lst; do
+        [ -f "$ext_list" ] || continue
+        while IFS= read -r ext; do
+            ext=${ext%%#*}
+            ext=${ext//[$'\t\r\n ']/}
+            [ -n "$ext" ] || continue
+            case "$ext" in
+                *KERNEL*.tcz) continue ;;
+                *.tcz) ;;
+                *) ext="$ext.tcz" ;;
+            esac
+            require_entry "tce/optional/$ext"
+        done < "$ext_list"
+    done
 fi
 
 echo ">> verified $ROOTFS"

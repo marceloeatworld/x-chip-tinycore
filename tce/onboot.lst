@@ -13,6 +13,8 @@ htop.tcz
 file.tcz
 strace.tcz
 i2c-tools.tcz
+libasound.tcz
+alsa.tcz
 alsa-utils.tcz
 procps.tcz
 nmap.tcz
@@ -33,7 +35,3 @@ gzip.tcz
 bzip2.tcz
 zstd.tcz
 tar.tcz
-ffmpeg.tcz
-mpg123.tcz
-sox.tcz
-alsa-plugins.tcz
