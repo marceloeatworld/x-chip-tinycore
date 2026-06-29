@@ -25,16 +25,16 @@ container-build:
 	./scripts/06-build-in-container.sh
 
 public-rootfs:
-	REQUIRE_WIFI_CONFIG=0 REQUIRE_AUTHORIZED_KEYS=0 SECRETS_ENV=/dev/null ./scripts/06-build-in-container.sh
+	PUBLIC_IMAGE=1 REQUIRE_WIFI_CONFIG=0 REQUIRE_AUTHORIZED_KEYS=0 SECRETS_ENV=/dev/null ./scripts/06-build-in-container.sh
 
 verify:
 	./scripts/07-verify-rootfs.sh
 
 public-verify:
-	REQUIRE_WIFI_CONFIG=0 REQUIRE_AUTHORIZED_KEYS=0 ./scripts/07-verify-rootfs.sh
+	PUBLIC_IMAGE=1 REQUIRE_WIFI_CONFIG=0 REQUIRE_AUTHORIZED_KEYS=0 SECRETS_ENV=/dev/null ./scripts/07-verify-rootfs.sh
 
 public-release:
-	REQUIRE_WIFI_CONFIG=0 REQUIRE_AUTHORIZED_KEYS=0 ./scripts/08-package-release.sh
+	PUBLIC_IMAGE=1 REQUIRE_WIFI_CONFIG=0 REQUIRE_AUTHORIZED_KEYS=0 SECRETS_ENV=/dev/null ./scripts/08-package-release.sh
 
 flash-local-check: verify
 	./scripts/05-flash-local.sh

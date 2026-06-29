@@ -22,7 +22,8 @@ resolve_path() {
 KDIR="$HERE/build/linux-${KERNEL_VERSION}"
 [ -d "$KDIR" ] || { echo "run 'make kernel' first (missing $KDIR)" >&2; exit 1; }
 
-SRC="$HERE/build/rtl8812au"
+SRC="$HERE/build/rtl8812au-src"
+OUT_DIR="$HERE/build/rtl8812au"
 PATCH_FILE=$(resolve_path "$RTL8812AU_PATCH")
 
 command -v git >/dev/null || { echo "need git to fetch rtl8812au source" >&2; exit 1; }
@@ -83,4 +84,5 @@ make -C "$SRC" -j1 \
     CONFIG_PLATFORM_ARM_SUNxI=n \
     CONFIG_PLATFORM_ARM_RPI=y
 
-echo ">> built RTL8812AU module: $SRC/8812au.ko"
+install -D -m644 "$SRC/8812au.ko" "$OUT_DIR/8812au.ko"
+echo ">> built RTL8812AU module: $OUT_DIR/8812au.ko"

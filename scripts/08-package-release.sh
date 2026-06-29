@@ -5,8 +5,13 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)
 cd "$HERE"
 source ./config.env
 
+if [ "${PUBLIC_IMAGE:-0}" = 1 ]; then
+    REQUIRE_WIFI_CONFIG=0
+    REQUIRE_AUTHORIZED_KEYS=0
+fi
+
 ROOTFS=${1:-${ROOTFS:-$OUT}}
-RELEASE_NAME=${RELEASE_NAME:-x-chip-tinycore-pocketchip-${KERNEL_VERSION}${KERNEL_LOCALVERSION}}
+RELEASE_NAME=${RELEASE_NAME:-${PROJECT_REPO_NAME}-pocketchip-${KERNEL_VERSION}${KERNEL_LOCALVERSION}}
 DIST_DIR=${DIST_DIR:-dist}
 
 [ -f "$ROOTFS" ] || {
@@ -57,7 +62,7 @@ fi
 if [ "${ALLOW_PERSONAL_RELEASE:-0}" = 1 ]; then
     ./scripts/07-verify-rootfs.sh "$ROOTFS"
 else
-    REQUIRE_WIFI_CONFIG=0 REQUIRE_AUTHORIZED_KEYS=0 ./scripts/07-verify-rootfs.sh "$ROOTFS"
+    PUBLIC_IMAGE=1 REQUIRE_WIFI_CONFIG=0 REQUIRE_AUTHORIZED_KEYS=0 ./scripts/07-verify-rootfs.sh "$ROOTFS"
 fi
 
 release_dir="$DIST_DIR/$RELEASE_NAME"
@@ -85,6 +90,7 @@ rootfs_file=$(basename "$rootfs_out")
 rootfs_sha256=$rootfs_sha
 contains_wifi_config=$has_wifi
 authorized_keys_bytes=$auth_bytes
+public_image=$([ "${ALLOW_PERSONAL_RELEASE:-0}" = 1 ] && echo 0 || echo 1)
 ssh_user=$SSH_USER
 ssh_password_auth=$ssh_password_auth
 EOF

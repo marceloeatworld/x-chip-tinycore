@@ -6,10 +6,11 @@ set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 cd "$HERE"
+source ./config.env
 
 FLASH_HOST=${FLASH_HOST:-${PI_HOST:-}}
 FLASH_TOOLS_DIR=${FLASH_TOOLS_DIR:-${PI_TOOLS_DIR:-x-chip-tools}}
-ROOTFS=${ROOTFS:-headless-rootfs.tar.gz}
+ROOTFS=${ROOTFS:-$OUT}
 REMOTE_ROOTFS=${REMOTE_ROOTFS:-tinycore-rootfs.tar.gz}
 SSH_CONFIG=${SSH_CONFIG:-${HOME:-}/.ssh/config}
 DO_FLASH=0
@@ -18,7 +19,7 @@ REUSE_INSTALLER=0
 
 usage() {
     cat <<EOF
-usage: $0 [--flash] [--reuse-installer] [--no-copy] --host <linux-host> [--tools-dir x-chip-tools] [--rootfs headless-rootfs.tar.gz]
+usage: $0 [--flash] [--reuse-installer] [--no-copy] --host <linux-host> [--tools-dir x-chip-tools] [--rootfs $OUT]
 
 Default mode copies the rootfs to the SSH flashing host and runs preflight checks only.
 Use --flash to actually erase/write the PocketCHIP NAND via flash-live.sh.
@@ -30,7 +31,7 @@ Environment overrides:
   FLASH_TOOLS_DIR x-chip-tools path on the flashing host, relative to SSH home unless absolute (default: x-chip-tools)
   PI_HOST         Backward-compatible alias for FLASH_HOST
   PI_TOOLS_DIR    Backward-compatible alias for FLASH_TOOLS_DIR
-  ROOTFS          local rootfs tar to flash (default: headless-rootfs.tar.gz)
+  ROOTFS          local rootfs tar to flash (default: $OUT)
   REMOTE_ROOTFS   remote filename under FLASH_TOOLS_DIR (default: tinycore-rootfs.tar.gz)
   SSH_CONFIG      SSH config for the host connection (default: \$HOME/.ssh/config, if present)
 EOF
@@ -152,7 +153,7 @@ require_file() {
 echo ">> preflight on $(hostname)"
 sudo -n true
 
-for cmd in sha256sum tar ssh ping dd mkimage sunxi-fel sunxi-nand-image-builder; do
+for cmd in sha256sum tar ssh ping ip dd mkimage sunxi-fel sunxi-nand-image-builder; do
     require_cmd "$cmd"
 done
 require_cmd curl
@@ -283,20 +284,25 @@ for node in /dev/console /dev/null /dev/tty /dev/tty0 /dev/tty1 /dev/ttyS0 /dev/
   test -c "/rootfs$node"
   test "$(stat -c '%u:%g' "/rootfs$node")" = "0:0"
 done
-[ -x /rootfs/opt/x-chip-firstboot.sh ]
-grep -q '192.168.82.1' /rootfs/opt/x-chip-firstboot.sh
-grep -q 'start_usb_debug_gadget' /rootfs/opt/x-chip-firstboot.sh
-grep -q 'start_ssh' /rootfs/opt/x-chip-firstboot.sh
+[ -x /rootfs/opt/x-chip-boot.sh ]
+[ ! -e /rootfs/opt/x-chip-firstboot.sh ]
+grep -q '192.168.82.1' /rootfs/opt/x-chip-boot.sh
+grep -q 'start_usb_debug_gadget' /rootfs/opt/x-chip-boot.sh
+grep -q 'start_ssh' /rootfs/opt/x-chip-boot.sh
 grep -q 'UseDNS no' /rootfs/usr/local/etc/ssh/sshd_config
 if grep -q 'UsePAM' /rootfs/usr/local/etc/ssh/sshd_config; then
   echo "ERROR: sshd_config contains unsupported UsePAM option" >&2
   exit 1
 fi
 grep -q 'PocketCHIP TinyCore' /rootfs/etc/os-release
+grep -Eq '^[[:space:]]*tmpfs[[:space:]]+/tmp[[:space:]]+tmpfs[[:space:]]+' /rootfs/etc/fstab
+grep -Eq '^[[:space:]]*tmpfs[[:space:]]+/run[[:space:]]+tmpfs[[:space:]]+' /rootfs/etc/fstab
+grep -Eq '^[[:space:]]*tmpfs[[:space:]]+/var/run[[:space:]]+tmpfs[[:space:]]+' /rootfs/etc/fstab
+grep -Eq '^[[:space:]]*tmpfs[[:space:]]+/var/lock[[:space:]]+tmpfs[[:space:]]+' /rootfs/etc/fstab
 grep -q 'udevadm settle --timeout=5' /rootfs/etc/init.d/tc-config
 grep -q 'fstab_pid:-' /rootfs/etc/init.d/tc-config
-grep -q 'load_tcz_boot_core' /rootfs/opt/x-chip-firstboot.sh
-grep -q 'load_tcz_onboot_background' /rootfs/opt/x-chip-firstboot.sh
+grep -q 'load_tcz_boot_core' /rootfs/opt/x-chip-boot.sh
+grep -q 'load_tcz_onboot_background' /rootfs/opt/x-chip-boot.sh
 test -e /rootfs/home/chip/.ssh/authorized_keys || echo "WARN: no authorized_keys file; public image will need manual SSH key setup"
 if [ -f /rootfs/etc/wpa_supplicant.conf ]; then
   test -s /rootfs/etc/wpa_supplicant.conf
@@ -362,14 +368,19 @@ for node in /dev/console /dev/null /dev/tty /dev/tty0 /dev/tty1 /dev/ttyS0 /dev/
   test "$(stat -c '%u:%g' "/verify-rootfs$node")" = "0:0"
 done
 grep -q 'PocketCHIP TinyCore' /verify-rootfs/etc/os-release
+grep -Eq '^[[:space:]]*tmpfs[[:space:]]+/tmp[[:space:]]+tmpfs[[:space:]]+' /verify-rootfs/etc/fstab
+grep -Eq '^[[:space:]]*tmpfs[[:space:]]+/run[[:space:]]+tmpfs[[:space:]]+' /verify-rootfs/etc/fstab
+grep -Eq '^[[:space:]]*tmpfs[[:space:]]+/var/run[[:space:]]+tmpfs[[:space:]]+' /verify-rootfs/etc/fstab
+grep -Eq '^[[:space:]]*tmpfs[[:space:]]+/var/lock[[:space:]]+tmpfs[[:space:]]+' /verify-rootfs/etc/fstab
 grep -q 'udevadm settle --timeout=5' /verify-rootfs/etc/init.d/tc-config
 grep -q 'fstab_pid:-' /verify-rootfs/etc/init.d/tc-config
 grep -q 'WAITED' /verify-rootfs/opt/x-chip-tty1-getty.sh
-grep -q '192.168.82.1' /verify-rootfs/opt/x-chip-firstboot.sh
-grep -q 'start_usb_debug_gadget' /verify-rootfs/opt/x-chip-firstboot.sh
-grep -q 'load_tcz_boot_core' /verify-rootfs/opt/x-chip-firstboot.sh
-grep -q 'load_tcz_onboot_background' /verify-rootfs/opt/x-chip-firstboot.sh
-grep -q 'start_ssh' /verify-rootfs/opt/x-chip-firstboot.sh
+test ! -e /verify-rootfs/opt/x-chip-firstboot.sh
+grep -q '192.168.82.1' /verify-rootfs/opt/x-chip-boot.sh
+grep -q 'start_usb_debug_gadget' /verify-rootfs/opt/x-chip-boot.sh
+grep -q 'load_tcz_boot_core' /verify-rootfs/opt/x-chip-boot.sh
+grep -q 'load_tcz_onboot_background' /verify-rootfs/opt/x-chip-boot.sh
+grep -q 'start_ssh' /verify-rootfs/opt/x-chip-boot.sh
 grep -q 'UseDNS no' /verify-rootfs/usr/local/etc/ssh/sshd_config
 if grep -q 'UsePAM' /verify-rootfs/usr/local/etc/ssh/sshd_config; then
   echo "ERROR: sshd_config contains unsupported UsePAM option" >&2
@@ -391,6 +402,39 @@ grep 'PRETTY_NAME' /verify-rootfs/etc/os-release
 INNER
 }
 
+start_installer_usb_ip_watchdog() {
+    (
+        set +e
+        local iface addr
+        for _ in $(seq 180); do
+            iface=
+            for addr in /sys/class/net/*/address; do
+                [ "$(cat "$addr" 2>/dev/null)" = "de:ad:be:ef:53:02" ] || continue
+                iface=$(basename "$(dirname "$addr")")
+                break
+            done
+            if [ -n "$iface" ]; then
+                sudo -n ip addr replace 192.168.81.2/24 dev "$iface" >/dev/null 2>&1 || true
+                sudo -n ip link set "$iface" up >/dev/null 2>&1 || true
+                if ping -c1 -W1 192.168.81.1 >/dev/null 2>&1; then
+                    echo ">> installer USB host IP: $iface 192.168.81.2/24"
+                    exit 0
+                fi
+            fi
+            sleep 1
+        done
+    ) &
+    INSTALLER_USB_IP_WATCHDOG=$!
+    echo ">> installer USB IP watchdog active"
+}
+
+stop_installer_usb_ip_watchdog() {
+    [ -n "${INSTALLER_USB_IP_WATCHDOG:-}" ] || return 0
+    kill "$INSTALLER_USB_IP_WATCHDOG" >/dev/null 2>&1 || true
+    wait "$INSTALLER_USB_IP_WATCHDOG" >/dev/null 2>&1 || true
+    unset INSTALLER_USB_IP_WATCHDOG
+}
+
 if [ "$DO_FLASH" != 1 ]; then
     echo ">> preflight complete"
     echo ">> connect PocketCHIP in FEL mode, then rerun with --flash"
@@ -407,6 +451,8 @@ echo ">> checking FEL"
 sudo -n env PATH="$PATH" sunxi-fel ver
 
 echo ">> flashing TinyCore rootfs"
+start_installer_usb_ip_watchdog
+flash_status=0
 sudo -n env PATH="$PATH" \
     ZIMAGE="$ZIMAGE" \
     DTB="$DTB" \
@@ -414,7 +460,9 @@ sudo -n env PATH="$PATH" \
     SPL="$FLASH_TOOLS_DIR/.images/uboot/sunxi-spl.bin" \
     UBOOT_BIN="$FLASH_TOOLS_DIR/.images/uboot/u-boot-dtb.bin" \
     INITRD="$FLASH_TOOLS_DIR/.images/initrd.uimage" \
-    "$FLASH_TOOLS_DIR/flash-live.sh" "$FLASH_TOOLS_DIR/$REMOTE_ROOTFS"
+    "$FLASH_TOOLS_DIR/flash-live.sh" "$FLASH_TOOLS_DIR/$REMOTE_ROOTFS" || flash_status=$?
+stop_installer_usb_ip_watchdog
+[ "$flash_status" -eq 0 ] || exit "$flash_status"
 verify_flashed_rootfs
 echo ">> flash complete -- remove the FEL jumper and power-cycle into NAND"
 REMOTE

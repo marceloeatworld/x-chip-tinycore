@@ -11,7 +11,7 @@ headless-rootfs.tar.gz
 Target:
 
 - TinyCore/CorePure armhf 16.x
-- Linux `6.18.36-chip-tc`
+- Linux `6.18.37-chip-tc`
 - NAND/UBIFS boot through `x-chip-tools`
 - LCD console, serial console, WiFi, SSH
 - no Xorg, no desktop
@@ -26,6 +26,8 @@ Tested on a PocketCHIP:
 - internal RTL8723BS WiFi
 - SSH login as `chip`
 - RTL8812AU USB WiFi module built as optional secondary adapter
+- boot runtime uses `/opt/x-chip-boot.sh` with USB debug and SSH recovery
+  brought up before slower background extension loading
 
 ## Quick Flash
 
@@ -90,9 +92,9 @@ make public-release
 ```
 
 The public image contains no WiFi PSK and no SSH authorized key.
-SSH is enabled with password login for user `chip`; the default public password
-is `chip`. Change it after first login with `passwd`, or override it at build
-time with `SSH_PASSWORD=... make public-rootfs`.
+`PUBLIC_IMAGE=1` enables password SSH for user `chip`; the default public
+password is `chip`. Change it after first login with `passwd`, or override it
+at build time with `SSH_PASSWORD=... make public-rootfs`.
 
 ## Important Files
 
@@ -119,8 +121,11 @@ scripts/08-package-release.sh
 - PocketCHIP keymap: loaded from `chip-debroot` by default
 - Audio UI controls: `libasound.tcz` + `alsa.tcz` + `alsa-utils.tcz` loaded
   early for direct ALSA control (`amixer`, `alsamixer`, `aplay`)
-- Optional media pack: `/tce/media.lst` pre-seeds `ffmpeg.tcz`; it is loaded on
-  demand by `x-chip-media-on` for `ffplay` video playback, not at boot
+- Boot-critical SSH/WiFi extensions are materialized into the rootfs, with
+  slower extension loading deferred in the background
+- Optional media pack: `/tce/media.lst` pre-seeds `ffmpeg.tcz` and
+  `mpg123.tcz`; it is loaded on demand by `x-chip-media-on` for video/audio
+  playback, not at boot
 
 The PocketCHIP keymap is a partial `loadkeys` overlay. The build always merges
 it with the default Linux console map from the kernel tree being built, then
@@ -160,6 +165,10 @@ Check board status:
 x-chip-keyboard-status
 x-chip-audio-status
 x-chip-power-status
+x-chip-status once
+x-chip-logs boot
+x-chip-time status
+x-chip-brightness status
 ```
 
 Flash a downloaded tar directly:

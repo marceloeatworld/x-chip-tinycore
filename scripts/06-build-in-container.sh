@@ -7,6 +7,13 @@ set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 cd "$HERE"
+source ./config.env
+
+if [ "${PUBLIC_IMAGE:-0}" = 1 ]; then
+    REQUIRE_WIFI_CONFIG=0
+    REQUIRE_AUTHORIZED_KEYS=0
+    SECRETS_ENV=/dev/null
+fi
 
 DOCKER=${DOCKER:-docker}
 IMAGE=${IMAGE:-x-chip-tc}
@@ -53,11 +60,8 @@ for candidate in \
     [ -n "$KEYMAP_HOST" ] && break
 done
 if [ "${REQUIRE_AUTHORIZED_KEYS:-1}" = 0 ]; then
-    if [ -n "${AUTHORIZED_KEYS_SOURCE:-}" ]; then
-        AUTHORIZED_KEYS_HOST=$(resolve_existing "$AUTHORIZED_KEYS_SOURCE" || true)
-    else
-        AUTHORIZED_KEYS_HOST=
-    fi
+    EMPTY_KEYS=$(mktemp)
+    AUTHORIZED_KEYS_HOST=$EMPTY_KEYS
 else
     AUTHORIZED_KEYS_HOST=$(pick_authorized_keys || true)
 fi
@@ -65,10 +69,6 @@ FLASH_HOST=$(resolve_existing "${FLASH_SOURCE:-../flash}" || true)
 CHIP_DEBROOT_HOST=$(resolve_existing "${CHIP_DEBROOT_SOURCE:-../chip-debroot}" || true)
 
 [ -n "$KEYMAP_HOST" ] || { echo "missing keymap: run make deps or set KEYMAP_SOURCE" >&2; exit 1; }
-if [ -z "$AUTHORIZED_KEYS_HOST" ] && [ "${REQUIRE_AUTHORIZED_KEYS:-1}" = 0 ]; then
-    EMPTY_KEYS=$(mktemp)
-    AUTHORIZED_KEYS_HOST=$EMPTY_KEYS
-fi
 [ -n "$AUTHORIZED_KEYS_HOST" ] || { echo "missing authorized_keys: set AUTHORIZED_KEYS_SOURCE or create ~/.ssh/pocket.pub" >&2; exit 1; }
 [ -n "$CHIP_DEBROOT_HOST" ] || { echo "missing chip-debroot: set CHIP_DEBROOT_SOURCE or place ../chip-debroot" >&2; exit 1; }
 
@@ -92,11 +92,13 @@ DOCKER_ARGS=(
     -e SECRETS_ENV="${SECRETS_ENV:-./secrets.env}" \
     -e REQUIRE_WIFI_CONFIG="${REQUIRE_WIFI_CONFIG:-1}" \
     -e REQUIRE_AUTHORIZED_KEYS="${REQUIRE_AUTHORIZED_KEYS:-1}" \
+    -e PUBLIC_IMAGE="${PUBLIC_IMAGE:-0}" \
     -e SSH_PASSWORD_AUTH="${SSH_PASSWORD_AUTH:-}" \
     -e SSH_PASSWORD="${SSH_PASSWORD:-chip}" \
     -e SSH_PASSWORD_HASH="${SSH_PASSWORD_HASH:-}" \
-    -e SSH_PASSWORD_SALT="${SSH_PASSWORD_SALT:-xchiptinycore}" \
+    -e SSH_PASSWORD_SALT="${SSH_PASSWORD_SALT:-}" \
     -e PRESEED_TCZ="${PRESEED_TCZ:-1}" \
+    -e OUT="$OUT" \
     -e ROOTFS_FORCE_FAKEROOT=1 \
 )
 
@@ -113,4 +115,4 @@ fi
 
 "$DOCKER" run "${DOCKER_ARGS[@]}" "$IMAGE" make
 
-sha256sum headless-rootfs.tar.gz
+sha256sum "$OUT"

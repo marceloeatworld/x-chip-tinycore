@@ -66,6 +66,7 @@ Public release must show:
 ```text
 contains_wifi_config=0
 authorized_keys_bytes=0
+public_image=1
 ssh_user=chip
 ssh_password_auth=yes
 ```
